@@ -279,3 +279,85 @@ class CurvaABCDialog(QDialog):
             self.tabela_abc.setItem(row, 1, valor_item)
             self.tabela_abc.setItem(row, 2, acumulada_item)
             self.tabela_abc.setItem(row, 3, categoria_item) 
+            
+            
+from PyQt5.QtWidgets import QGridLayout # Adicione QGridLayout à lista de importações no topo do arquivo
+
+class CadastroDialog(QDialog):
+    """Um diálogo para cadastrar um novo item no fluxo de caixa."""
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Cadastrar Novo Item")
+        self.setMinimumWidth(400)
+
+        layout = QGridLayout(self)
+        
+        # Campos do formulário
+        self.txt_nome = QLineEdit()
+        self.txt_doc = QLineEdit()
+        self.txt_vencimento = QDateEdit(calendarPopup=True, date=QDate.currentDate())
+        self.combo_filial = QComboBox()
+        self.combo_filial.addItems(['SZM', 'SVA', 'SS', 'SNF'])
+        self.txt_tipo = QLineEdit()
+        self.txt_valor = QLineEdit()
+        self.txt_valor.setPlaceholderText("Use valor negativo para saídas (ex: -150,50)")
+        self.combo_caracteristica = QComboBox()
+        self.combo_caracteristica.addItems(['Receber', 'Pagar'])
+        self.txt_obs = QTextEdit()
+
+        # Adicionando widgets ao layout
+        layout.addWidget(QLabel("Nome:"), 0, 0)
+        layout.addWidget(self.txt_nome, 0, 1)
+        layout.addWidget(QLabel("Doc:"), 1, 0)
+        layout.addWidget(self.txt_doc, 1, 1)
+        layout.addWidget(QLabel("Vencimento:"), 2, 0)
+        layout.addWidget(self.txt_vencimento, 2, 1)
+        layout.addWidget(QLabel("Filial:"), 3, 0)
+        layout.addWidget(self.combo_filial, 3, 1)
+        layout.addWidget(QLabel("Tipo:"), 4, 0)
+        layout.addWidget(self.txt_tipo, 4, 1)
+        layout.addWidget(QLabel("Característica:"), 5, 0)
+        layout.addWidget(self.combo_caracteristica, 5, 1)
+        layout.addWidget(QLabel("Valor (R$):"), 6, 0)
+        layout.addWidget(self.txt_valor, 6, 1)
+        layout.addWidget(QLabel("Observação:"), 7, 0)
+        layout.addWidget(self.txt_obs, 7, 1)
+
+        # Botões de Salvar e Cancelar
+        botoes = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
+        botoes.accepted.connect(self.accept)
+        botoes.rejected.connect(self.reject)
+        layout.addWidget(botoes, 8, 0, 1, 2)
+
+        self.dados = None
+
+    def accept(self):
+        # Validação dos dados antes de fechar
+        if not self.txt_nome.text() or not self.txt_valor.text():
+            QMessageBox.warning(self, "Campos Obrigatórios", "Os campos 'Nome' e 'Valor' são obrigatórios.")
+            return
+
+        try:
+            valor = float(self.txt_valor.text().replace(',', '.'))
+        except ValueError:
+            QMessageBox.warning(self, "Valor Inválido", "O campo 'Valor' deve ser um número válido.")
+            return
+        
+        # Ajusta o sinal do valor com base na característica
+        caracteristica = self.combo_caracteristica.currentText()
+        if (caracteristica == 'Pagar' and valor > 0) or (caracteristica == 'Receber' and valor < 0):
+            valor *= -1
+
+        self.dados = {
+            "NOME": self.txt_nome.text(),
+            "DOC": self.txt_doc.text(),
+            "VENCIMENTO": pd.to_datetime(self.txt_vencimento.date().toString("yyyy-MM-dd")),
+            "FILIAL": self.combo_filial.currentText(),
+            "TIPO": self.txt_tipo.text(),
+            "VALOR": valor,
+            "OBS": self.txt_obs.toPlainText()
+        }
+        super().accept()
+
+    def get_dados(self):
+        return self.dados
