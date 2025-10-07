@@ -1,153 +1,142 @@
+# Fluxo_de_Caixa.py (VERSÃO DE DIAGNÓSTICO)
+
 import sys
 import os
-from PyQt5.QtWidgets import *
-from PyQt5.Qt import Qt
-from DadosFormulario import DadosFormulario
-from PyQt5.QtCore import QTimer
-import traceback
+import pandas as pd
+from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QFileDialog, QMessageBox
+from PyQt5.QtCore import Qt
 
-## TESTE DE BRANCH
+# Importando nossos módulos refatorados!
+from DadosFormulario_refatorado import DadosFormularioWidget
+from data import excel_handler
+from core import financas, relatorios, utils
 
 os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
 
 class MainWindow(QMainWindow):
-    def __init__(self, widget):
+    def __init__(self):
         super().__init__()
-
-        self.setWindowTitle('GRF v1.4')  # Titulo da Janela
+        self.setWindowTitle('GRF v1.6 (Diagnóstico)')
         self.resize(1600, 850)
+        self.df_dados_completos = pd.DataFrame()
+        self.df_dados_filtrados = pd.DataFrame()
+        self.view = DadosFormularioWidget()
+        self.setCentralWidget(self.view)
+        self._criar_menus()
+        self._conectar_sinais()
 
-        self.setWindowFlag
-
+    def _criar_menus(self):
         self.menuBar = self.menuBar()
         self.fileMenu = self.menuBar.addMenu('Arquivo')
-        self.RelatorioMenu = self.menuBar.addMenu('Relatório')
-        self.CadastroMenu = self.menuBar.addMenu('Cadastro')
-        self.FiltroMenu = self.menuBar.addMenu('Filtro')
-        self.calendarMenu = self.menuBar.addMenu('Calendário')
+        carregar_action = QAction('Carregar Excel', self)
+        carregar_action.setShortcut('Ctrl+O')
+        carregar_action.triggered.connect(self.carregar_arquivos_excel)
+        self.fileMenu.addAction(carregar_action)
+        salvar_action = QAction('Salvar como Excel', self)
+        salvar_action.setShortcut('Ctrl+S')
+        salvar_action.triggered.connect(self.salvar_tabela_excel)
+        self.fileMenu.addAction(salvar_action)
+        self.relatorioMenu = self.menuBar.addMenu('Relatório')
+        imprimir_fluxo_action = QAction('Visualizar Fluxo de Caixa', self)
+        imprimir_fluxo_action.setShortcut('Ctrl+P')
+        imprimir_fluxo_action.triggered.connect(self.visualizar_relatorio_fluxo_caixa)
+        self.relatorioMenu.addAction(imprimir_fluxo_action)
 
-         # Inicialmente desativar o menu de filtro
-        self.FiltroMenu.setEnabled(False)
+    def _conectar_sinais(self):
+        self.view.botao_aplicar_filtro.clicked.connect(self.aplicar_filtros_e_atualizar_view)
+        self.view.botao_saldo_inicial.clicked.connect(self.aplicar_filtros_e_atualizar_view)
 
-        
-        # Adicionar calendário
-
-        calendario = QAction('Calendário', self)
-        calendario.setShortcut('Ctrl+D')
-        calendario.triggered.connect(lambda: widget.gerar_calendario())
-        self.calendarMenu.addAction(calendario)
-
-        
-        # Adicionar botão para filtrar
-        filtrar = QAction('Filtrar', self)
-        filtrar.setShortcut('Ctrl+F')
-        filtrar.triggered.connect(lambda: DadosFormulario.filtrar_tabela(widget))
-        self.FiltroMenu.addAction(filtrar)
-
-        # Adicionar botão para cadastrar
-        cadastrar = QAction('Cadastrar', self)
-        cadastrar.setShortcut('Ctrl+N')
-        cadastrar.triggered.connect(lambda: DadosFormulario.cadastrar(widget))
-        self.CadastroMenu.addAction(cadastrar)
-
-        # Adicionar botão para carregar arquivos Excel
-        carregar_excel = QAction('Carregar Excel', self)
-        carregar_excel.setShortcut('Ctrl+O')
-        carregar_excel.triggered.connect(lambda: self.carregar_arquivos_excel(widget))  # Conectando ao método para carregar arquivos Excel
-        self.fileMenu.addAction(carregar_excel)
-
-
-        # Salvar tabela em Excel
-        salvar_excel = QAction('Salvar como Excel', self)
-        salvar_excel.setShortcut('Ctrl+S')
-        salvar_excel.triggered.connect(lambda: self.salvar_tabela_excel(widget))
-        self.fileMenu.addAction(salvar_excel)
-
-        #Imprimir pagamentos
-        pagamentos = QAction('Imprimir Pagamentos', self)
-        pagamentos.setShortcut('Ctrl+shift+P')
-        pagamentos.triggered.connect(lambda: DadosFormulario.vistaPreviaSaidas(widget))
-        self.RelatorioMenu.addAction(pagamentos)
-
-        # Adicionar botão para sair
-        sair = QAction('Sair', self)
-        sair.setShortcut('Ctrl+Q')
-        sair.triggered.connect(lambda: app.quit())
-
-        self.fileMenu.addAction(sair)
-
-        self.setCentralWidget(widget)
-
-        # Imprimir Fluxo de Caixa
-        imprime_fc = QAction('Imprimir Fluxo', self)
-        imprime_fc.setShortcut('Ctrl+P')
-        imprime_fc.triggered.connect(lambda: DadosFormulario.vistaPrevia(widget))
-        self.RelatorioMenu.addAction(imprime_fc)
-
-         # Menu para alternar entre entrada e saída
-
-        curva_abc_entrada = QAction('Curva ABC - Entradas', self)
-        curva_abc_entrada.setShortcut('Ctrl+i')
-        curva_abc_entrada.triggered.connect(lambda: widget.gerar_curva_abc('entrada'))
-        self.RelatorioMenu.addAction(curva_abc_entrada)
-
-        curva_abc_saida = QAction('Curva ABC - Saídas', self)
-        curva_abc_saida.setShortcut('Ctrl+shift+s')
-        curva_abc_saida.triggered.connect(lambda: widget.gerar_curva_abc('saida'))
-        self.RelatorioMenu.addAction(curva_abc_saida)
-
-        # Relatório de balanço
-
-        relatorio_balanco = QAction('Balanço', self)
-        relatorio_balanco.setShortcut('Ctrl+B')
-        relatorio_balanco.triggered.connect(lambda: widget.gerar_relatorio_balanco())
-        self.RelatorioMenu.addAction(relatorio_balanco)
-        
-        
-        
-
-        # Relatório balanço Diário
-        self.botao_fluxo_diario = QAction("Fluxo Diário")
-        self.botao_fluxo_diario.triggered.connect(lambda: widget.gerar_relatorio_fluxo_diario())
-        self.RelatorioMenu.addAction(self.botao_fluxo_diario)
-
-        relatorio_fluxo_mensal = QAction('Fluxo Mensal', self)
-        relatorio_fluxo_mensal.setShortcut('Ctrl+M')
-        relatorio_fluxo_mensal.triggered.connect(lambda: widget.gerar_relatorio_fluxo_mensal())
-        self.RelatorioMenu.addAction(relatorio_fluxo_mensal)
-        
-
-    def enable_filter_menu(self, enable):
-            self.FiltroMenu.setEnabled(enable)
-
-    # Método para carregar arquivos Excel
-    def carregar_arquivos_excel(self, widget):
-        # Abrir uma janela de diálogo para selecionar vários arquivos Excel
-        files, _ = QFileDialog.getOpenFileNames(self, "Selecione Arquivos", "", "Arquivos Excel (*.xlsx *.xls)")
+    def carregar_arquivos_excel(self):
+        files, _ = QFileDialog.getOpenFileNames(self, "Selecione os arquivos Excel", "", "Excel Files (*.xlsx *.xls)")
         if files:
-            widget.preencher_tabela(files)  # Chamar o método para preencher a tabela
-        else:
-            print("Nenhum arquivo selecionado.")
+            self.df_dados_completos = excel_handler.carregar_dados_de_excel(files)
+            if not self.df_dados_completos.empty:
+                print("--- DADOS CARREGADOS COM SUCESSO ---")
+                print(f"Total de registros carregados: {len(self.df_dados_completos)}")
+                print(f"Tipo da coluna VENCIMENTO: {self.df_dados_completos['VENCIMENTO'].dtype}")
+                self.aplicar_filtros_e_atualizar_view(primeira_carga=True)
+                QMessageBox.information(self, "Sucesso", f"{len(self.df_dados_completos)} registros carregados.")
 
-    def salvar_tabela_excel(self, widget):
-        file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Tabela", "", "Arquivos Excel (*.xlsx)")
+    def salvar_tabela_excel(self):
+        if self.df_dados_filtrados.empty:
+            QMessageBox.warning(self, "Aviso", "Não há dados filtrados para salvar.")
+            return
+        file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Tabela", "", "Excel Files (*.xlsx)")
         if file_path:
-            widget.salvar_tabela(file_path)
-        else:
-            print("Salvamento cancelado.")
+            excel_handler.salvar_dados_para_excel(self.df_dados_filtrados, file_path)
 
+    def aplicar_filtros_e_atualizar_view(self, primeira_carga=False):
+        if self.df_dados_completos.empty:
+            return
+
+        print("\n--- APLICANDO FILTROS ---")
+        df = self.df_dados_completos.copy()
+
+        if primeira_carga and not df.empty:
+            data_min = df['VENCIMENTO'].min()
+            data_max = df['VENCIMENTO'].max()
+            print(f"Detectado período dos dados: de {data_min.strftime('%Y-%m-%d')} a {data_max.strftime('%Y-%m-%d')}")
+            print("Ajustando os calendários da interface para este período.")
+            self.view.data_inicial.setDate(data_min)
+            self.view.data_final.setDate(data_max)
+
+        filtros = self.view.get_valores_filtros()
+        print(f"Filtros da interface: {filtros}")
+        
+        # Filtro de data
+        print(f"Registros antes do filtro de data: {len(df)}")
+        df = df[(df['VENCIMENTO'] >= filtros['data_inicial']) & (df['VENCIMENTO'] <= filtros['data_final'])]
+        print(f"Registros APÓS o filtro de data: {len(df)}")
+        
+        # Outros filtros
+        if filtros['nome'] != "Todos":
+            df = df[df['NOME'] == filtros['nome']]
+        if filtros['filial'] != "Todos":
+            df = df[df['FILIAL'] == filtros['filial']]
+
+        print(f"Registros após TODOS os filtros: {len(df)}")
+
+        if df.empty and not primeira_carga:
+            QMessageBox.information(self, "Aviso", "Nenhum registro encontrado para os filtros aplicados.")
+
+        self._atualizar_view_com_dados(df)
+
+    def _atualizar_view_com_dados(self, df_filtrado):
+        print(f"--- ATUALIZANDO VIEW com {len(df_filtrado)} registros ---")
+        try:
+            saldo_inicial = float(self.view.txt_saldo_inicial.text().replace(',', '.'))
+        except ValueError:
+            saldo_inicial = 0.0
+
+        df_para_processar = df_filtrado.sort_values(by='VENCIMENTO').copy()
+        if not df_para_processar.empty:
+            df_para_processar['SOMA'] = saldo_inicial + df_para_processar['VALOR'].cumsum()
+
+        self.df_dados_filtrados = df_para_processar
+        self.view.atualizar_tabela(self.df_dados_filtrados)
+        self.view.atualizar_combos_filtro(self.df_dados_completos)
+        self.view.atualizar_grafico(self.df_dados_filtrados, saldo_inicial)
+
+    def visualizar_relatorio_fluxo_caixa(self):
+        if self.df_dados_filtrados.empty:
+            QMessageBox.warning(self, "Aviso", "Não há dados para gerar o relatório.")
+            return
+        df_relatorio = self.df_dados_filtrados.rename(columns={'NOME': 'nome', 'DOC': 'doc', 'FILIAL': 'filial', 'VENCIMENTO': 'vencimento', 'VALOR': 'valor', 'SOMA': 'soma'})
+        try:
+            saldo_inicial = float(self.view.txt_saldo_inicial.text().replace(',', '.'))
+        except ValueError:
+            saldo_inicial = 0.0
+        html = relatorios.gerar_html_fluxo_caixa_completo(df_relatorio, saldo_inicial)
+        self.view.exibir_preview_impressao(html)
 
 if __name__ == '__main__':
-
     try:
         app = QApplication(sys.argv)
-        form = DadosFormulario()
-        main_window = MainWindow(form)
-        form.main_window = main_window  # Passar a referência da janela principal para o formulário
+        main_window = MainWindow()
         main_window.show()
         sys.exit(app.exec_())
-
     except Exception as e:
-        error_message = "".join(traceback.format_exception(None, e, e.__traceback__))
-        print("Ocorreu um erro fatal:\n", error_message)  # Exibe o erro no terminal
-        QMessageBox.critical(None, "Erro Fatal", f"Ocorreu um erro inesperado:\n{error_message}")
+        print(f"Ocorreu um erro fatal: {e}")
+        import traceback
+        traceback.print_exc()
+        QMessageBox.critical(None, "Erro Fatal", f"Ocorreu um erro inesperado:\n{e}")
