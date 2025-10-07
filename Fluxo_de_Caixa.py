@@ -1,4 +1,4 @@
-# Fluxo_de_Caixa.py (com Curva ABC)
+# Fluxo_de_Caixa.py (com lógica de Observações)
 
 import sys
 import os
@@ -6,7 +6,6 @@ import pandas as pd
 from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QFileDialog, QMessageBox
 from PyQt5.QtCore import Qt, QDate
 
-# Importando o novo diálogo
 from DadosFormulario_refatorado import DadosFormularioWidget, BalancoDialog, CurvaABCDialog
 from data import excel_handler
 from core import financas, relatorios, utils
@@ -16,7 +15,7 @@ os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('GRF v1.9 (Curva ABC)')
+        self.setWindowTitle('GRF v2.0 (Observações)')
         self.resize(1600, 850)
         self.df_dados_completos = pd.DataFrame()
         self.df_dados_filtrados = pd.DataFrame()
@@ -26,14 +25,12 @@ class MainWindow(QMainWindow):
         self._conectar_sinais()
 
     def _criar_menus(self):
-        menu_bar = self.menuBar() 
+        menu_bar = self.menuBar()
         self.fileMenu = menu_bar.addMenu('Arquivo')
-        
         carregar_action = QAction('Carregar Excel', self)
         carregar_action.setShortcut('Ctrl+O')
         carregar_action.triggered.connect(self.carregar_arquivos_excel)
         self.fileMenu.addAction(carregar_action)
-
         salvar_action = QAction('Salvar como Excel', self)
         salvar_action.setShortcut('Ctrl+S')
         salvar_action.triggered.connect(self.salvar_tabela_excel)
@@ -44,24 +41,20 @@ class MainWindow(QMainWindow):
         imprimir_fluxo_action.setShortcut('Ctrl+P')
         imprimir_fluxo_action.triggered.connect(self.visualizar_relatorio_fluxo_caixa)
         self.relatorioMenu.addAction(imprimir_fluxo_action)
-        
         balanco_action = QAction('Balanço', self)
         balanco_action.setShortcut('Ctrl+B')
         balanco_action.triggered.connect(self._exibir_relatorio_balanco)
         self.relatorioMenu.addAction(balanco_action)
-
-        # >>> NOVO: Adicionando as ações de Curva ABC <<<
         self.relatorioMenu.addSeparator()
         abc_entrada_action = QAction('Curva ABC - Entradas', self)
         abc_entrada_action.triggered.connect(lambda: self._exibir_curva_abc('entrada'))
         self.relatorioMenu.addAction(abc_entrada_action)
-
         abc_saida_action = QAction('Curva ABC - Saídas', self)
         abc_saida_action.triggered.connect(lambda: self._exibir_curva_abc('saida'))
         self.relatorioMenu.addAction(abc_saida_action)
 
-
     def _conectar_sinais(self):
+        # Sinais existentes
         self.view.botao_aplicar_filtro.clicked.connect(self.aplicar_filtros_e_atualizar_view)
         self.view.botao_saldo_inicial.clicked.connect(self.aplicar_filtros_e_atualizar_view)
         self.view.botao_hoje.clicked.connect(self._filtrar_por_hoje)
@@ -69,24 +62,51 @@ class MainWindow(QMainWindow):
         self.view.botao_15_dias.clicked.connect(lambda: self._filtrar_proximos_dias(15))
         self.view.botao_30_dias.clicked.connect(lambda: self._filtrar_proximos_dias(30))
 
-    # --- NOVO MÉTODO PARA O RELATÓRIO DE CURVA ABC ---
+        # >>> NOVO: Conectando a lógica de observações <<<
+        self.view.tabela.cellClicked.connect(self._exibir_observacao_selecionada)
+        self.view.botao_salvar_obs.clicked.connect(self._salvar_observacao)
+
+    # --- NOVOS MÉTODOS PARA OBSERVAÇÕES ---
+    def _exibir_observacao_selecionada(self, row, column):
+        """Pega a observação da linha clicada e a exibe na caixa de texto."""
+        if 0 <= row < len(self.df_dados_filtrados):
+            # Pega o valor da coluna 'OBS' usando o índice do DataFrame
+            observacao = self.df_dados_filtrados.iloc[row]['OBS']
+            self.view.texto_observacao.setText(str(observacao) if pd.notna(observacao) else "")
+
+    def _salvar_observacao(self):
+        """Salva o texto da caixa de observação na linha selecionada da tabela."""
+        linha_selecionada = self.view.tabela.currentRow()
+        if linha_selecionada < 0:
+            QMessageBox.warning(self, "Aviso", "Nenhuma linha selecionada para salvar a observação.")
+            return
+
+        # Pega o índice original do DataFrame (importante!)
+        if 0 <= linha_selecionada < len(self.df_dados_filtrados):
+            indice_original = self.df_dados_filtrados.index[linha_selecionada]
+            nova_observacao = self.view.texto_observacao.toPlainText()
+
+            # Atualiza a observação nos dois DataFrames
+            self.df_dados_completos.loc[indice_original, 'OBS'] = nova_observacao
+            self.df_dados_filtrados.loc[indice_original, 'OBS'] = nova_observacao
+            
+            # Atualiza a célula na tabela para refletir a mudança imediatamente
+            self.view.tabela.setItem(linha_selecionada, self.view.colunas.index('OBS'), QTableWidgetItem(nova_observacao))
+            
+            QMessageBox.information(self, "Sucesso", "Observação salva com sucesso!")
+
+    # (O resto do arquivo continua o mesmo)
     def _exibir_curva_abc(self, tipo):
         if self.df_dados_filtrados.empty:
             QMessageBox.warning(self, "Aviso", "Não há dados filtrados para gerar a Curva ABC.")
             return
-
-        # 1. Chamar a função de cálculo do nosso módulo de finanças
         df_resultado_abc = financas.gerar_curva_abc(self.df_dados_filtrados, tipo)
-
         if df_resultado_abc.empty:
             QMessageBox.information(self, "Aviso", f"Não foram encontradas '{tipo}s' no período selecionado.")
             return
-
-        # 2. Criar e exibir o diálogo
         dialog = CurvaABCDialog(df_resultado_abc, tipo, self)
         dialog.exec_()
-
-    # (O resto do arquivo continua o mesmo)
+    
     def _exibir_relatorio_balanco(self):
         if self.df_dados_filtrados.empty:
             QMessageBox.warning(self, "Aviso", "Não há dados filtrados para gerar o balanço.")
@@ -134,8 +154,7 @@ class MainWindow(QMainWindow):
             excel_handler.salvar_dados_para_excel(self.df_dados_filtrados, file_path)
 
     def aplicar_filtros_e_atualizar_view(self, primeira_carga=False):
-        if self.df_dados_completos.empty:
-            return
+        if self.df_dados_completos.empty: return
         df = self.df_dados_completos.copy()
         if primeira_carga and not df.empty:
             data_min = df['VENCIMENTO'].min()
@@ -143,10 +162,8 @@ class MainWindow(QMainWindow):
             self.view.data_inicial.setDate(data_min)
             self.view.data_final.setDate(data_max)
         filtros = self.view.get_valores_filtros()
-        if filtros['nome'] != "Todos":
-            df = df[df['NOME'] == filtros['nome']]
-        if filtros['filial'] != "Todos":
-            df = df[df['FILIAL'] == filtros['filial']]
+        if filtros['nome'] != "Todos": df = df[df['NOME'] == filtros['nome']]
+        if filtros['filial'] != "Todos": df = df[df['FILIAL'] == filtros['filial']]
         df = df[(df['VENCIMENTO'] >= filtros['data_inicial']) & (df['VENCIMENTO'] <= filtros['data_final'])]
         if df.empty and not primeira_carga:
             QMessageBox.information(self, "Aviso", "Nenhum registro encontrado para os filtros aplicados.")

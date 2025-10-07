@@ -1,14 +1,16 @@
-# DadosFormulario_refatorado.py (com os novos botões)
+# DadosFormulario_refatorado.py (versão completa e atualizada)
 
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QTableWidget, QHBoxLayout, QPushButton, QLabel, QLineEdit,
                              QDateEdit, QTableWidgetItem, QSplitter, QHeaderView, QMessageBox, QDialog,
-                             QComboBox) # <<< QComboBox ADICIONADO AQUI
+                             QComboBox, QTextEdit, QAbstractItemView, QDialogButtonBox)
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtPrintSupport import QPrinter
-from PyQt5.QtGui import QTextDocument
+from PyQt5.QtGui import QTextDocument, QPixmap
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 import pandas as pd
 import plotly.express as px
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 
 class DadosFormularioWidget(QWidget):
     def __init__(self):
@@ -64,7 +66,7 @@ class DadosFormularioWidget(QWidget):
         filtro_layout.addWidget(self.botao_aplicar_filtro)
         self.groupBox_filtros.setLayout(filtro_layout)
 
-        # >>> NOVO: Botões de Filtro Rápido <<<
+        # Filtros Rápidos
         self.groupBox_filtros_rapidos = QGroupBox("Filtros Rápidos")
         layout_rapido = QHBoxLayout()
         self.botao_atrasados = QPushButton("Atrasados")
@@ -77,9 +79,20 @@ class DadosFormularioWidget(QWidget):
         layout_rapido.addWidget(self.botao_30_dias)
         self.groupBox_filtros_rapidos.setLayout(layout_rapido)
 
+        # Caixa de Observação
+        self.groupBox_obs = QGroupBox("Observação da Linha Selecionada")
+        layout_obs = QVBoxLayout()
+        self.texto_observacao = QTextEdit()
+        self.texto_observacao.setPlaceholderText("Clique em uma linha na tabela para ver a observação aqui.")
+        self.botao_salvar_obs = QPushButton("Salvar Observação")
+        layout_obs.addWidget(self.texto_observacao)
+        layout_obs.addWidget(self.botao_salvar_obs)
+        self.groupBox_obs.setLayout(layout_obs)
+
         self.layout_direito.addWidget(self.groupBox_saldo)
         self.layout_direito.addWidget(self.groupBox_filtros)
-        self.layout_direito.addWidget(self.groupBox_filtros_rapidos) # Adicionado ao layout
+        self.layout_direito.addWidget(self.groupBox_filtros_rapidos)
+        self.layout_direito.addWidget(self.groupBox_obs)
         self.layout_direito.addStretch()
 
         # Montagem final
@@ -97,6 +110,8 @@ class DadosFormularioWidget(QWidget):
         self.tabela.setHorizontalHeaderLabels(self.colunas)
         self.tabela.setColumnWidth(0, 350)
         self.tabela.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
+        self.tabela.setSelectionBehavior(QAbstractItemView.SelectRows)
+        self.tabela.setEditTriggers(QAbstractItemView.NoEditTriggers)
 
     def get_valores_filtros(self):
         nome_filtro = self.combo_filtro_nome.currentText()
@@ -122,7 +137,7 @@ class DadosFormularioWidget(QWidget):
                     elif col_name in ['VALOR', 'SOMA']:
                         item_texto = f"{valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
                     else:
-                        item_texto = str(valor)
+                        item_texto = str(valor) if pd.notna(valor) else ""
                     item = QTableWidgetItem(item_texto)
                     self.tabela.setItem(row_idx, col_idx, item)
 
@@ -161,18 +176,9 @@ class DadosFormularioWidget(QWidget):
         preview_dialog = QPrintPreviewDialog(printer, self)
         preview_dialog.paintRequested.connect(documento.print_)
         preview_dialog.exec_()
-        
 
+# --- CLASSES DE DIÁLOGO ---
 
-
-
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-import tempfile
-import os
-from PyQt5.QtWidgets import QTableWidget, QHeaderView, QSizePolicy, QDialogButtonBox
-from PyQt5.QtGui import QPixmap
-        
 class BalancoDialog(QDialog):
     """Um diálogo para exibir o relatório de balanço com uma tabela e um gráfico."""
     def __init__(self, dados_balanco, parent=None):
@@ -203,7 +209,6 @@ class BalancoDialog(QDialog):
             tabela_balanco.setItem(row, 1, item_valor)
 
         tabela_balanco.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        tabela_balanco.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         layout.addWidget(tabela_balanco)
 
         # Gráfico de Barras
@@ -236,9 +241,7 @@ class BalancoDialog(QDialog):
         fig.tight_layout()
 
         return FigureCanvas(fig)
-    
-    
-    
+
 class CurvaABCDialog(QDialog):
     """Um diálogo para exibir a tabela da Curva ABC."""
     def __init__(self, df_abc, tipo, parent=None):
@@ -265,16 +268,14 @@ class CurvaABCDialog(QDialog):
         self.tabela_abc.setRowCount(len(df))
         for row, row_data in df.iterrows():
             nome_item = QTableWidgetItem(row_data['NOME'])
-            # Usamos a coluna 'Valor Formatado' que já criamos no core/financas.py
             valor_item = QTableWidgetItem(row_data['Valor Formatado'])
             acumulada_item = QTableWidgetItem(f"{row_data['% Acumulada']:.2f}%")
             categoria_item = QTableWidgetItem(row_data['Categoria'])
 
-            # Tornar células não editáveis
             for item in [nome_item, valor_item, acumulada_item, categoria_item]:
                 item.setFlags(item.flags() & ~Qt.ItemIsEditable)
 
             self.tabela_abc.setItem(row, 0, nome_item)
             self.tabela_abc.setItem(row, 1, valor_item)
             self.tabela_abc.setItem(row, 2, acumulada_item)
-            self.tabela_abc.setItem(row, 3, categoria_item)
+            self.tabela_abc.setItem(row, 3, categoria_item) 
