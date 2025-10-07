@@ -1,8 +1,8 @@
-# DadosFormulario_refatorado.py (agora é a nossa "View")
+# DadosFormulario_refatorado.py (com os novos botões)
 
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QTableWidget, QHBoxLayout, QPushButton, QLabel, QLineEdit,
-                             QDateEdit, QCalendarWidget, QTableWidgetItem, QSplitter, QHeaderView, QMessageBox, QDialog,
-                             QComboBox)
+                             QDateEdit, QTableWidgetItem, QSplitter, QHeaderView, QMessageBox, QDialog,
+                             QComboBox) # <<< QComboBox ADICIONADO AQUI
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtPrintSupport import QPrinter
 from PyQt5.QtGui import QTextDocument
@@ -64,9 +64,23 @@ class DadosFormularioWidget(QWidget):
         filtro_layout.addWidget(self.botao_aplicar_filtro)
         self.groupBox_filtros.setLayout(filtro_layout)
 
+        # >>> NOVO: Botões de Filtro Rápido <<<
+        self.groupBox_filtros_rapidos = QGroupBox("Filtros Rápidos")
+        layout_rapido = QHBoxLayout()
+        self.botao_atrasados = QPushButton("Atrasados")
+        self.botao_hoje = QPushButton("Hoje")
+        self.botao_15_dias = QPushButton("15 Dias")
+        self.botao_30_dias = QPushButton("30 Dias")
+        layout_rapido.addWidget(self.botao_atrasados)
+        layout_rapido.addWidget(self.botao_hoje)
+        layout_rapido.addWidget(self.botao_15_dias)
+        layout_rapido.addWidget(self.botao_30_dias)
+        self.groupBox_filtros_rapidos.setLayout(layout_rapido)
+
         self.layout_direito.addWidget(self.groupBox_saldo)
         self.layout_direito.addWidget(self.groupBox_filtros)
-        self.layout_direito.addStretch() # Empurra tudo pra cima
+        self.layout_direito.addWidget(self.groupBox_filtros_rapidos) # Adicionado ao layout
+        self.layout_direito.addStretch()
 
         # Montagem final
         horizontal_splitter.addWidget(vertical_splitter)
@@ -84,16 +98,9 @@ class DadosFormularioWidget(QWidget):
         self.tabela.setColumnWidth(0, 350)
         self.tabela.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
 
-    # --- MÉTODOS PÚBLICOS (API da View) ---
-
     def get_valores_filtros(self):
-        """ 
-        Retorna um dicionário com os valores atuais dos widgets de filtro.
-        Garante que, se o filtro estiver vazio, ele retorne 'Todos'.
-        """
         nome_filtro = self.combo_filtro_nome.currentText()
         filial_filtro = self.combo_filtro_filial.currentText()
-
         return {
             "nome": nome_filtro if nome_filtro else "Todos",
             "filial": filial_filtro if filial_filtro else "Todos",
@@ -102,29 +109,24 @@ class DadosFormularioWidget(QWidget):
         }
 
     def atualizar_tabela(self, df: pd.DataFrame):
-        """ Limpa a tabela e a preenche com dados de um DataFrame. """
         self.tabela.setRowCount(0)
         if df.empty:
             return
-
         self.tabela.setRowCount(len(df))
         for row_idx, row_data in df.iterrows():
             for col_idx, col_name in enumerate(self.colunas):
                 if col_name in df.columns:
                     valor = row_data[col_name]
-                    
                     if isinstance(valor, pd.Timestamp):
                         item_texto = valor.strftime('%d/%m/%Y')
                     elif col_name in ['VALOR', 'SOMA']:
                         item_texto = f"{valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
                     else:
                         item_texto = str(valor)
-
                     item = QTableWidgetItem(item_texto)
                     self.tabela.setItem(row_idx, col_idx, item)
 
     def atualizar_combos_filtro(self, df: pd.DataFrame):
-        """ Atualiza os ComboBoxes com valores únicos do DataFrame. """
         for combo, coluna in [(self.combo_filtro_nome, 'NOME'), (self.combo_filtro_filial, 'FILIAL')]:
             combo.blockSignals(True)
             texto_atual = combo.currentText()
@@ -133,40 +135,29 @@ class DadosFormularioWidget(QWidget):
             if not df.empty and coluna in df.columns:
                 valores_unicos = sorted(df[coluna].dropna().unique())
                 combo.addItems(valores_unicos)
-            
-            # Tenta restaurar a seleção anterior
             index = combo.findText(texto_atual)
             if index != -1:
                 combo.setCurrentIndex(index)
-
             combo.blockSignals(False)
     
     def atualizar_grafico(self, df: pd.DataFrame, saldo_inicial: float):
-        """ Gera e exibe o gráfico de fluxo de caixa. """
         if df.empty:
             self.grafico.setHtml("<h1>Sem dados para exibir no gráfico</h1>")
             return
-            
         df_grafico = df[['VENCIMENTO', 'SOMA']].copy()
         df_grafico.rename(columns={'VENCIMENTO': 'Vencimento', 'SOMA': 'Valor'}, inplace=True)
-        
         fig = px.line(df_grafico, x='Vencimento', y='Valor', title="Fluxo de Caixa Acumulado")
         fig.add_hline(y=0, line_color='red', line_dash="dash")
         fig.update_layout(yaxis_title="Valor Acumulado (R$)", plot_bgcolor='white')
-        
         self.grafico.setHtml(fig.to_html(include_plotlyjs='cdn'))
         
     def exibir_preview_impressao(self, html_content: str):
-        """ Exibe um diálogo de pré-visualização de impressão com o HTML fornecido. """
         from PyQt5.QtPrintSupport import QPrintPreviewDialog
-
         documento = QTextDocument()
         documento.setHtml(html_content)
-
         printer = QPrinter(QPrinter.HighResolution)
         printer.setPageSize(QPrinter.A4)
         printer.setOrientation(QPrinter.Portrait)
-
         preview_dialog = QPrintPreviewDialog(printer, self)
         preview_dialog.paintRequested.connect(documento.print_)
         preview_dialog.exec_()

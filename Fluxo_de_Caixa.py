@@ -1,12 +1,11 @@
-# Fluxo_de_Caixa.py (VERSÃO DE DIAGNÓSTICO)
+# Fluxo_de_Caixa.py (com a lógica dos filtros rápidos)
 
 import sys
 import os
 import pandas as pd
-from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QFileDialog, QMessageBox
-from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QFileDialog, QMessageBox, QComboBox
+from PyQt5.QtCore import Qt, QDate
 
-# Importando nossos módulos refatorados!
 from DadosFormulario_refatorado import DadosFormularioWidget
 from data import excel_handler
 from core import financas, relatorios, utils
@@ -16,7 +15,7 @@ os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('GRF v1.6 (Diagnóstico)')
+        self.setWindowTitle('GRF v1.7 (Filtros Rápidos)')
         self.resize(1600, 850)
         self.df_dados_completos = pd.DataFrame()
         self.df_dados_filtrados = pd.DataFrame()
@@ -43,17 +42,44 @@ class MainWindow(QMainWindow):
         self.relatorioMenu.addAction(imprimir_fluxo_action)
 
     def _conectar_sinais(self):
+        # Filtros principais
         self.view.botao_aplicar_filtro.clicked.connect(self.aplicar_filtros_e_atualizar_view)
         self.view.botao_saldo_inicial.clicked.connect(self.aplicar_filtros_e_atualizar_view)
 
+        # >>> NOVO: Conectando os botões de filtro rápido <<<
+        self.view.botao_hoje.clicked.connect(self._filtrar_por_hoje)
+        self.view.botao_atrasados.clicked.connect(self._filtrar_por_atrasados)
+        self.view.botao_15_dias.clicked.connect(lambda: self._filtrar_proximos_dias(15))
+        self.view.botao_30_dias.clicked.connect(lambda: self._filtrar_proximos_dias(30))
+
+    # --- NOVOS MÉTODOS PARA FILTROS RÁPIDOS ---
+    def _filtrar_por_hoje(self):
+        hoje = QDate.currentDate()
+        self.view.data_inicial.setDate(hoje)
+        self.view.data_final.setDate(hoje)
+        self.aplicar_filtros_e_atualizar_view()
+
+    def _filtrar_por_atrasados(self):
+        hoje = QDate.currentDate()
+        data_inicio_atrasados = hoje.addYears(-10) # Pega um período bem grande no passado
+        data_fim_atrasados = hoje.addDays(-1)
+        self.view.data_inicial.setDate(data_inicio_atrasados)
+        self.view.data_final.setDate(data_fim_atrasados)
+        self.aplicar_filtros_e_atualizar_view()
+
+    def _filtrar_proximos_dias(self, dias):
+        hoje = QDate.currentDate()
+        data_futura = hoje.addDays(dias)
+        self.view.data_inicial.setDate(hoje)
+        self.view.data_final.setDate(data_futura)
+        self.aplicar_filtros_e_atualizar_view()
+
+    # --- MÉTODOS DE CONTROLE (sem grandes mudanças) ---
     def carregar_arquivos_excel(self):
         files, _ = QFileDialog.getOpenFileNames(self, "Selecione os arquivos Excel", "", "Excel Files (*.xlsx *.xls)")
         if files:
             self.df_dados_completos = excel_handler.carregar_dados_de_excel(files)
             if not self.df_dados_completos.empty:
-                print("--- DADOS CARREGADOS COM SUCESSO ---")
-                print(f"Total de registros carregados: {len(self.df_dados_completos)}")
-                print(f"Tipo da coluna VENCIMENTO: {self.df_dados_completos['VENCIMENTO'].dtype}")
                 self.aplicar_filtros_e_atualizar_view(primeira_carga=True)
                 QMessageBox.information(self, "Sucesso", f"{len(self.df_dados_completos)} registros carregados.")
 
@@ -68,50 +94,30 @@ class MainWindow(QMainWindow):
     def aplicar_filtros_e_atualizar_view(self, primeira_carga=False):
         if self.df_dados_completos.empty:
             return
-
-        print("\n--- APLICANDO FILTROS ---")
         df = self.df_dados_completos.copy()
-
         if primeira_carga and not df.empty:
             data_min = df['VENCIMENTO'].min()
             data_max = df['VENCIMENTO'].max()
-            print(f"Detectado período dos dados: de {data_min.strftime('%Y-%m-%d')} a {data_max.strftime('%Y-%m-%d')}")
-            print("Ajustando os calendários da interface para este período.")
             self.view.data_inicial.setDate(data_min)
             self.view.data_final.setDate(data_max)
-
         filtros = self.view.get_valores_filtros()
-        print(f"Filtros da interface: {filtros}")
-        
-        # Filtro de data
-        print(f"Registros antes do filtro de data: {len(df)}")
-        df = df[(df['VENCIMENTO'] >= filtros['data_inicial']) & (df['VENCIMENTO'] <= filtros['data_final'])]
-        print(f"Registros APÓS o filtro de data: {len(df)}")
-        
-        # Outros filtros
         if filtros['nome'] != "Todos":
             df = df[df['NOME'] == filtros['nome']]
         if filtros['filial'] != "Todos":
             df = df[df['FILIAL'] == filtros['filial']]
-
-        print(f"Registros após TODOS os filtros: {len(df)}")
-
+        df = df[(df['VENCIMENTO'] >= filtros['data_inicial']) & (df['VENCIMENTO'] <= filtros['data_final'])]
         if df.empty and not primeira_carga:
             QMessageBox.information(self, "Aviso", "Nenhum registro encontrado para os filtros aplicados.")
-
         self._atualizar_view_com_dados(df)
 
     def _atualizar_view_com_dados(self, df_filtrado):
-        print(f"--- ATUALIZANDO VIEW com {len(df_filtrado)} registros ---")
         try:
             saldo_inicial = float(self.view.txt_saldo_inicial.text().replace(',', '.'))
         except ValueError:
             saldo_inicial = 0.0
-
         df_para_processar = df_filtrado.sort_values(by='VENCIMENTO').copy()
         if not df_para_processar.empty:
             df_para_processar['SOMA'] = saldo_inicial + df_para_processar['VALOR'].cumsum()
-
         self.df_dados_filtrados = df_para_processar
         self.view.atualizar_tabela(self.df_dados_filtrados)
         self.view.atualizar_combos_filtro(self.df_dados_completos)
