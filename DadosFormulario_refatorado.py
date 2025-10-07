@@ -1,29 +1,59 @@
-# DadosFormulario_refatorado.py (versão completa e atualizada)
-
 from PyQt5.QtWidgets import (QWidget, QVBoxLayout, QGroupBox, QTableWidget, QHBoxLayout, QPushButton, QLabel, QLineEdit,
                              QDateEdit, QTableWidgetItem, QSplitter, QHeaderView, QMessageBox, QDialog,
-                             QComboBox, QTextEdit, QAbstractItemView, QDialogButtonBox)
+                             QComboBox, QTextEdit, QAbstractItemView, QDialogButtonBox, QGridLayout, QCalendarWidget)
 from PyQt5.QtCore import Qt, QDate
 from PyQt5.QtPrintSupport import QPrinter
-from PyQt5.QtGui import QTextDocument, QPixmap
+from PyQt5.QtGui import QTextDocument
 from PyQt5.QtWebEngineWidgets import QWebEngineView
 import pandas as pd
 import plotly.express as px
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-
+from PyQt5.QtGui import QColor, QTextCharFormat, QTextDocument, QPixmap
 class DadosFormularioWidget(QWidget):
     def __init__(self):
         super().__init__()
         self._setup_ui()
+        
+        
+    def destacar_periodo_calendario(self, data_inicio, data_fim):
+        """Aplica cores no calendário para destacar o período selecionado."""
+        # Reseta todas as formatações anteriores
+        formato_padrao = QTextCharFormat()
+        self.calendario.setDateTextFormat(QDate(), formato_padrao)
+
+        # Se não houver período, não faz nada
+        if not data_inicio or not data_fim:
+            return
+
+        # Formato para a data de início (verde)
+        formato_inicio = QTextCharFormat()
+        formato_inicio.setBackground(QColor("lightgreen"))
+        
+        # Formato para a data de fim (vermelho)
+        formato_fim = QTextCharFormat()
+        formato_fim.setBackground(QColor("lightcoral"))
+        
+        # Formato para o intervalo (amarelo)
+        formato_intervalo = QTextCharFormat()
+        formato_intervalo.setBackground(QColor("lightyellow"))
+
+        # Aplica o formato para todas as datas no intervalo
+        data_corrente = data_inicio
+        while data_corrente <= data_fim:
+            self.calendario.setDateTextFormat(data_corrente, formato_intervalo)
+            data_corrente = data_corrente.addDays(1)
+            
+        # Sobrescreve as cores de início e fim
+        self.calendario.setDateTextFormat(data_inicio, formato_inicio)
+        self.calendario.setDateTextFormat(data_fim, formato_fim)
+
 
     def _setup_ui(self):
-        # Layouts principais
         main_layout = QVBoxLayout(self)
         horizontal_splitter = QSplitter(Qt.Horizontal)
         vertical_splitter = QSplitter(Qt.Vertical)
         
-        # --- Lado Esquerdo (Gráfico e Tabela) ---
         self.grafico = QWebEngineView()
         self.tabela = QTableWidget()
         vertical_splitter.addWidget(self.grafico)
@@ -31,11 +61,9 @@ class DadosFormularioWidget(QWidget):
         vertical_splitter.setStretchFactor(0, 4)
         vertical_splitter.setStretchFactor(1, 5)
 
-        # --- Lado Direito (Controles e Filtros) ---
         right_widget = QWidget()
         self.layout_direito = QVBoxLayout(right_widget)
         
-        # Saldo Inicial
         self.groupBox_saldo = QGroupBox("Saldo Inicial")
         saldo_layout = QHBoxLayout()
         saldo_layout.addWidget(QLabel("Saldo (R$):"))
@@ -45,7 +73,6 @@ class DadosFormularioWidget(QWidget):
         saldo_layout.addWidget(self.botao_saldo_inicial)
         self.groupBox_saldo.setLayout(saldo_layout)
         
-        # Filtros
         self.groupBox_filtros = QGroupBox("Filtros")
         filtro_layout = QVBoxLayout()
         self.combo_filtro_nome = QComboBox()
@@ -53,7 +80,6 @@ class DadosFormularioWidget(QWidget):
         self.data_inicial = QDateEdit(calendarPopup=True, date=QDate.currentDate())
         self.data_final = QDateEdit(calendarPopup=True, date=QDate.currentDate().addDays(30))
         self.botao_aplicar_filtro = QPushButton("Aplicar Filtro")
-        
         filtro_layout.addWidget(QLabel("Filtrar por Nome:"))
         filtro_layout.addWidget(self.combo_filtro_nome)
         filtro_layout.addWidget(QLabel("Filtrar por Filial:"))
@@ -66,7 +92,6 @@ class DadosFormularioWidget(QWidget):
         filtro_layout.addWidget(self.botao_aplicar_filtro)
         self.groupBox_filtros.setLayout(filtro_layout)
 
-        # Filtros Rápidos
         self.groupBox_filtros_rapidos = QGroupBox("Filtros Rápidos")
         layout_rapido = QHBoxLayout()
         self.botao_atrasados = QPushButton("Atrasados")
@@ -79,7 +104,6 @@ class DadosFormularioWidget(QWidget):
         layout_rapido.addWidget(self.botao_30_dias)
         self.groupBox_filtros_rapidos.setLayout(layout_rapido)
 
-        # Caixa de Observação
         self.groupBox_obs = QGroupBox("Observação da Linha Selecionada")
         layout_obs = QVBoxLayout()
         self.texto_observacao = QTextEdit()
@@ -88,14 +112,21 @@ class DadosFormularioWidget(QWidget):
         layout_obs.addWidget(self.texto_observacao)
         layout_obs.addWidget(self.botao_salvar_obs)
         self.groupBox_obs.setLayout(layout_obs)
+        
+        self.groupBox_calendario = QGroupBox("Filtro por Dia")
+        layout_calendario = QVBoxLayout()
+        self.calendario = QCalendarWidget()
+        self.calendario.setGridVisible(True)
+        layout_calendario.addWidget(self.calendario)
+        self.groupBox_calendario.setLayout(layout_calendario)
 
         self.layout_direito.addWidget(self.groupBox_saldo)
         self.layout_direito.addWidget(self.groupBox_filtros)
         self.layout_direito.addWidget(self.groupBox_filtros_rapidos)
         self.layout_direito.addWidget(self.groupBox_obs)
+        self.layout_direito.addWidget(self.groupBox_calendario)
         self.layout_direito.addStretch()
 
-        # Montagem final
         horizontal_splitter.addWidget(vertical_splitter)
         horizontal_splitter.addWidget(right_widget)
         horizontal_splitter.setStretchFactor(0, 5)
@@ -104,6 +135,7 @@ class DadosFormularioWidget(QWidget):
         
         self._configurar_tabela()
 
+    # ... (resto dos métodos da classe DadosFormularioWidget)
     def _configurar_tabela(self):
         self.colunas = ['NOME', 'DOC', 'VENCIMENTO', 'Dias', 'FILIAL', 'TIPO', 'VALOR', 'SOMA', 'OBS']
         self.tabela.setColumnCount(len(self.colunas))
@@ -116,28 +148,19 @@ class DadosFormularioWidget(QWidget):
     def get_valores_filtros(self):
         nome_filtro = self.combo_filtro_nome.currentText()
         filial_filtro = self.combo_filtro_filial.currentText()
-        return {
-            "nome": nome_filtro if nome_filtro else "Todos",
-            "filial": filial_filtro if filial_filtro else "Todos",
-            "data_inicial": pd.to_datetime(self.data_inicial.date().toString("yyyy-MM-dd")),
-            "data_final": pd.to_datetime(self.data_final.date().toString("yyyy-MM-dd"))
-        }
+        return { "nome": nome_filtro if nome_filtro else "Todos", "filial": filial_filtro if filial_filtro else "Todos", "data_inicial": pd.to_datetime(self.data_inicial.date().toString("yyyy-MM-dd")), "data_final": pd.to_datetime(self.data_final.date().toString("yyyy-MM-dd")) }
 
     def atualizar_tabela(self, df: pd.DataFrame):
         self.tabela.setRowCount(0)
-        if df.empty:
-            return
+        if df.empty: return
         self.tabela.setRowCount(len(df))
         for row_idx, row_data in df.iterrows():
             for col_idx, col_name in enumerate(self.colunas):
                 if col_name in df.columns:
                     valor = row_data[col_name]
-                    if isinstance(valor, pd.Timestamp):
-                        item_texto = valor.strftime('%d/%m/%Y')
-                    elif col_name in ['VALOR', 'SOMA']:
-                        item_texto = f"{valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-                    else:
-                        item_texto = str(valor) if pd.notna(valor) else ""
+                    if isinstance(valor, pd.Timestamp): item_texto = valor.strftime('%d/%m/%Y')
+                    elif col_name in ['VALOR', 'SOMA']: item_texto = f"{valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
+                    else: item_texto = str(valor) if pd.notna(valor) else ""
                     item = QTableWidgetItem(item_texto)
                     self.tabela.setItem(row_idx, col_idx, item)
 
@@ -151,14 +174,11 @@ class DadosFormularioWidget(QWidget):
                 valores_unicos = sorted(df[coluna].dropna().unique())
                 combo.addItems(valores_unicos)
             index = combo.findText(texto_atual)
-            if index != -1:
-                combo.setCurrentIndex(index)
+            if index != -1: combo.setCurrentIndex(index)
             combo.blockSignals(False)
     
     def atualizar_grafico(self, df: pd.DataFrame, saldo_inicial: float):
-        if df.empty:
-            self.grafico.setHtml("<h1>Sem dados para exibir no gráfico</h1>")
-            return
+        if df.empty: self.grafico.setHtml("<h1>Sem dados para exibir no gráfico</h1>"); return
         df_grafico = df[['VENCIMENTO', 'SOMA']].copy()
         df_grafico.rename(columns={'VENCIMENTO': 'Vencimento', 'SOMA': 'Valor'}, inplace=True)
         fig = px.line(df_grafico, x='Vencimento', y='Valor', title="Fluxo de Caixa Acumulado")
@@ -168,11 +188,8 @@ class DadosFormularioWidget(QWidget):
         
     def exibir_preview_impressao(self, html_content: str):
         from PyQt5.QtPrintSupport import QPrintPreviewDialog
-        documento = QTextDocument()
-        documento.setHtml(html_content)
-        printer = QPrinter(QPrinter.HighResolution)
-        printer.setPageSize(QPrinter.A4)
-        printer.setOrientation(QPrinter.Portrait)
+        documento = QTextDocument(); documento.setHtml(html_content)
+        printer = QPrinter(QPrinter.HighResolution); printer.setPageSize(QPrinter.A4); printer.setOrientation(QPrinter.Portrait)
         preview_dialog = QPrintPreviewDialog(printer, self)
         preview_dialog.paintRequested.connect(documento.print_)
         preview_dialog.exec_()

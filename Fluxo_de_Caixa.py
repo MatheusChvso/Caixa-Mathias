@@ -1,4 +1,4 @@
-# Fluxo_de_Caixa.py (com funcionalidade de Cadastro)
+# Fluxo_de_Caixa.py (versão corrigida final)
 
 import sys
 import os
@@ -6,7 +6,6 @@ import pandas as pd
 from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QFileDialog, QMessageBox
 from PyQt5.QtCore import Qt, QDate
 
-# Importando o novo diálogo de cadastro
 from DadosFormulario_refatorado import DadosFormularioWidget, BalancoDialog, CurvaABCDialog, CadastroDialog
 from data import excel_handler
 from core import financas, relatorios, utils
@@ -16,57 +15,40 @@ os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('GRF v2.1 (Cadastro)')
+        self.setWindowTitle('GRF v2.4 (Calendário Colorido)')
         self.resize(1600, 850)
         self.df_dados_completos = pd.DataFrame()
         self.df_dados_filtrados = pd.DataFrame()
         self.view = DadosFormularioWidget()
         self.setCentralWidget(self.view)
+        self.data_selecao_inicio = None
         self._criar_menus()
         self._conectar_sinais()
 
     def _criar_menus(self):
         menu_bar = self.menuBar() 
         self.fileMenu = menu_bar.addMenu('Arquivo')
-        
-        # >>> NOVO: Adicionando a ação de Cadastrar <<<
-        cadastrar_action = QAction('Cadastrar Novo Item', self)
-        cadastrar_action.setShortcut('Ctrl+N')
-        cadastrar_action.triggered.connect(self._cadastrar_novo_item)
+        cadastrar_action = QAction('Cadastrar Novo Item', self); cadastrar_action.setShortcut('Ctrl+N'); cadastrar_action.triggered.connect(self._cadastrar_novo_item)
         self.fileMenu.addAction(cadastrar_action)
         self.fileMenu.addSeparator()
-
-        carregar_action = QAction('Carregar Excel', self)
-        carregar_action.setShortcut('Ctrl+O')
-        carregar_action.triggered.connect(self.carregar_arquivos_excel)
+        carregar_action = QAction('Carregar Excel', self); carregar_action.setShortcut('Ctrl+O'); carregar_action.triggered.connect(self.carregar_arquivos_excel)
         self.fileMenu.addAction(carregar_action)
-
-        salvar_action = QAction('Salvar como Excel', self)
-        salvar_action.setShortcut('Ctrl+S')
-        salvar_action.triggered.connect(self.salvar_tabela_excel)
+        salvar_action = QAction('Salvar como Excel', self); salvar_action.setShortcut('Ctrl+S'); salvar_action.triggered.connect(self.salvar_tabela_excel)
         self.fileMenu.addAction(salvar_action)
 
         self.relatorioMenu = menu_bar.addMenu('Relatório')
-        # ... (resto do menu de relatórios continua igual)
-        imprimir_fluxo_action = QAction('Visualizar Fluxo de Caixa', self)
-        imprimir_fluxo_action.setShortcut('Ctrl+P')
-        imprimir_fluxo_action.triggered.connect(self.visualizar_relatorio_fluxo_caixa)
+        imprimir_fluxo_action = QAction('Visualizar Fluxo de Caixa', self); imprimir_fluxo_action.setShortcut('Ctrl+P'); imprimir_fluxo_action.triggered.connect(self.visualizar_relatorio_fluxo_caixa)
         self.relatorioMenu.addAction(imprimir_fluxo_action)
-        balanco_action = QAction('Balanço', self)
-        balanco_action.setShortcut('Ctrl+B')
-        balanco_action.triggered.connect(self._exibir_relatorio_balanco)
+        balanco_action = QAction('Balanço', self); balanco_action.setShortcut('Ctrl+B'); balanco_action.triggered.connect(self._exibir_relatorio_balanco)
         self.relatorioMenu.addAction(balanco_action)
         self.relatorioMenu.addSeparator()
-        abc_entrada_action = QAction('Curva ABC - Entradas', self)
-        abc_entrada_action.triggered.connect(lambda: self._exibir_curva_abc('entrada'))
+        abc_entrada_action = QAction('Curva ABC - Entradas', self); abc_entrada_action.triggered.connect(lambda: self._exibir_curva_abc('entrada'))
         self.relatorioMenu.addAction(abc_entrada_action)
-        abc_saida_action = QAction('Curva ABC - Saídas', self)
-        abc_saida_action.triggered.connect(lambda: self._exibir_curva_abc('saida'))
+        abc_saida_action = QAction('Curva ABC - Saídas', self); abc_saida_action.triggered.connect(lambda: self._exibir_curva_abc('saida'))
         self.relatorioMenu.addAction(abc_saida_action)
 
 
     def _conectar_sinais(self):
-        # ... (sinais existentes)
         self.view.botao_aplicar_filtro.clicked.connect(self.aplicar_filtros_e_atualizar_view)
         self.view.botao_saldo_inicial.clicked.connect(self.aplicar_filtros_e_atualizar_view)
         self.view.botao_hoje.clicked.connect(self._filtrar_por_hoje)
@@ -75,35 +57,39 @@ class MainWindow(QMainWindow):
         self.view.botao_30_dias.clicked.connect(lambda: self._filtrar_proximos_dias(30))
         self.view.tabela.cellClicked.connect(self._exibir_observacao_selecionada)
         self.view.botao_salvar_obs.clicked.connect(self._salvar_observacao)
+        self.view.calendario.selectionChanged.connect(self._filtrar_pelo_calendario)
 
-    # --- NOVO MÉTODO PARA CADASTRAR ITEM ---
+    def _filtrar_pelo_calendario(self):
+        data_clicada = self.view.calendario.selectedDate()
+        if self.data_selecao_inicio is None:
+            self.data_selecao_inicio = data_clicada
+            self.view.data_inicial.setDate(data_clicada)
+            self.view.data_final.setDate(data_clicada)
+        else:
+            data_inicio = self.data_selecao_inicio
+            data_fim = data_clicada
+            if data_inicio > data_fim:
+                data_inicio, data_fim = data_fim, data_inicio
+            self.view.data_inicial.setDate(data_inicio)
+            self.view.data_final.setDate(data_fim)
+            self.data_selecao_inicio = None
+        self.aplicar_filtros_e_atualizar_view()
+
     def _cadastrar_novo_item(self):
         dialog = CadastroDialog(self)
-        # Se o usuário clicar em "Salvar" (e a validação passar), exec_() retorna 1
         if dialog.exec_():
             novos_dados = dialog.get_dados()
-            
-            # Adiciona as colunas que são calculadas
             novos_dados['DOC VENCIMENTO'] = novos_dados['VENCIMENTO']
             novos_dados['Dias'] = 0
-            
-            # Converte para DataFrame e concatena com os dados existentes
             nova_linha = pd.DataFrame([novos_dados])
             self.df_dados_completos = pd.concat([self.df_dados_completos, nova_linha], ignore_index=True)
-            
-            # Reordena o DataFrame principal
             self.df_dados_completos = self.df_dados_completos.sort_values(by=['VENCIMENTO', 'NOME'], ascending=[True, True]).reset_index(drop=True)
-            
             QMessageBox.information(self, "Sucesso", "Novo item cadastrado!")
-            # Atualiza a view para mostrar o novo item
             self.aplicar_filtros_e_atualizar_view()
 
-    # (O resto do arquivo continua o mesmo)
     def _salvar_observacao(self):
         linha_selecionada = self.view.tabela.currentRow()
-        if linha_selecionada < 0:
-            QMessageBox.warning(self, "Aviso", "Nenhuma linha selecionada para salvar a observação.")
-            return
+        if linha_selecionada < 0: QMessageBox.warning(self, "Aviso", "Nenhuma linha selecionada para salvar a observação."); return
         if 0 <= linha_selecionada < len(self.df_dados_filtrados):
             indice_original = self.df_dados_filtrados.index[linha_selecionada]
             nova_observacao = self.view.texto_observacao.toPlainText()
@@ -118,44 +104,35 @@ class MainWindow(QMainWindow):
             self.view.texto_observacao.setText(str(observacao) if pd.notna(observacao) else "")
             
     def _exibir_curva_abc(self, tipo):
-        if self.df_dados_filtrados.empty:
-            QMessageBox.warning(self, "Aviso", "Não há dados filtrados para gerar a Curva ABC.")
-            return
+        if self.df_dados_filtrados.empty: QMessageBox.warning(self, "Aviso", "Não há dados filtrados para gerar a Curva ABC."); return
         df_resultado_abc = financas.gerar_curva_abc(self.df_dados_filtrados, tipo)
-        if df_resultado_abc.empty:
-            QMessageBox.information(self, "Aviso", f"Não foram encontradas '{tipo}s' no período selecionado.")
-            return
-        dialog = CurvaABCDialog(df_resultado_abc, tipo, self)
-        dialog.exec_()
+        if df_resultado_abc.empty: QMessageBox.information(self, "Aviso", f"Não foram encontradas '{tipo}s' no período selecionado."); return
+        dialog = CurvaABCDialog(df_resultado_abc, tipo, self); dialog.exec_()
     
     def _exibir_relatorio_balanco(self):
-        if self.df_dados_filtrados.empty:
-            QMessageBox.warning(self, "Aviso", "Não há dados filtrados para gerar o balanço.")
-            return
+        if self.df_dados_filtrados.empty: QMessageBox.warning(self, "Aviso", "Não há dados filtrados para gerar o balanço."); return
         entradas, saidas, saldo, icp = financas.calcular_balanco(self.df_dados_filtrados)
         dados_formatados = {"Total de Entradas": entradas, "Total de Saídas": saidas, "Saldo Final": saldo, "ICP": icp}
-        dialog = BalancoDialog(dados_formatados, self)
-        dialog.exec_()
+        dialog = BalancoDialog(dados_formatados, self); dialog.exec_()
 
     def _filtrar_por_hoje(self):
+        self.data_selecao_inicio = None
         hoje = QDate.currentDate()
-        self.view.data_inicial.setDate(hoje)
-        self.view.data_final.setDate(hoje)
+        self.view.data_inicial.setDate(hoje); self.view.data_final.setDate(hoje)
         self.aplicar_filtros_e_atualizar_view()
 
     def _filtrar_por_atrasados(self):
+        self.data_selecao_inicio = None
         hoje = QDate.currentDate()
-        data_inicio_atrasados = hoje.addYears(-10)
-        data_fim_atrasados = hoje.addDays(-1)
-        self.view.data_inicial.setDate(data_inicio_atrasados)
-        self.view.data_final.setDate(data_fim_atrasados)
+        data_inicio_atrasados = hoje.addYears(-10); data_fim_atrasados = hoje.addDays(-1)
+        self.view.data_inicial.setDate(data_inicio_atrasados); self.view.data_final.setDate(data_fim_atrasados)
         self.aplicar_filtros_e_atualizar_view()
 
     def _filtrar_proximos_dias(self, dias):
+        self.data_selecao_inicio = None
         hoje = QDate.currentDate()
         data_futura = hoje.addDays(dias)
-        self.view.data_inicial.setDate(hoje)
-        self.view.data_final.setDate(data_futura)
+        self.view.data_inicial.setDate(hoje); self.view.data_final.setDate(data_futura)
         self.aplicar_filtros_e_atualizar_view()
 
     def carregar_arquivos_excel(self):
@@ -167,22 +144,21 @@ class MainWindow(QMainWindow):
                 QMessageBox.information(self, "Sucesso", f"{len(self.df_dados_completos)} registros carregados.")
 
     def salvar_tabela_excel(self):
-        if self.df_dados_filtrados.empty:
-            QMessageBox.warning(self, "Aviso", "Não há dados filtrados para salvar.")
-            return
+        if self.df_dados_completos.empty: QMessageBox.warning(self, "Aviso", "Não há dados para salvar."); return
         file_path, _ = QFileDialog.getSaveFileName(self, "Salvar Tabela", "", "Excel Files (*.xlsx)")
         if file_path:
-            # Salva o DataFrame COMPLETO para não perder dados
             excel_handler.salvar_dados_para_excel(self.df_dados_completos, file_path)
 
     def aplicar_filtros_e_atualizar_view(self, primeira_carga=False):
+        data_inicio = self.view.data_inicial.date()
+        data_fim = self.view.data_final.date()
+        self.view.destacar_periodo_calendario(data_inicio, data_fim)
         if self.df_dados_completos.empty: return
         df = self.df_dados_completos.copy()
         if primeira_carga and not df.empty:
-            data_min = df['VENCIMENTO'].min()
-            data_max = df['VENCIMENTO'].max()
-            self.view.data_inicial.setDate(data_min)
-            self.view.data_final.setDate(data_max)
+            self.data_selecao_inicio = None
+            data_min = df['VENCIMENTO'].min(); data_max = df['VENCIMENTO'].max()
+            self.view.data_inicial.setDate(data_min); self.view.data_final.setDate(data_max)
         filtros = self.view.get_valores_filtros()
         if filtros['nome'] != "Todos": df = df[df['NOME'] == filtros['nome']]
         if filtros['filial'] != "Todos": df = df[df['FILIAL'] == filtros['filial']]
@@ -192,10 +168,8 @@ class MainWindow(QMainWindow):
         self._atualizar_view_com_dados(df)
 
     def _atualizar_view_com_dados(self, df_filtrado):
-        try:
-            saldo_inicial = float(self.view.txt_saldo_inicial.text().replace(',', '.'))
-        except ValueError:
-            saldo_inicial = 0.0
+        try: saldo_inicial = float(self.view.txt_saldo_inicial.text().replace(',', '.'))
+        except ValueError: saldo_inicial = 0.0
         df_para_processar = df_filtrado.sort_values(by='VENCIMENTO').copy()
         if not df_para_processar.empty:
             df_para_processar['SOMA'] = saldo_inicial + df_para_processar['VALOR'].cumsum()
@@ -205,14 +179,10 @@ class MainWindow(QMainWindow):
         self.view.atualizar_grafico(self.df_dados_filtrados, saldo_inicial)
 
     def visualizar_relatorio_fluxo_caixa(self):
-        if self.df_dados_filtrados.empty:
-            QMessageBox.warning(self, "Aviso", "Não há dados para gerar o relatório.")
-            return
+        if self.df_dados_filtrados.empty: QMessageBox.warning(self, "Aviso", "Não há dados para gerar o relatório."); return
         df_relatorio = self.df_dados_filtrados.rename(columns={'NOME': 'nome', 'DOC': 'doc', 'FILIAL': 'filial', 'VENCIMENTO': 'vencimento', 'VALOR': 'valor', 'SOMA': 'soma'})
-        try:
-            saldo_inicial = float(self.view.txt_saldo_inicial.text().replace(',', '.'))
-        except ValueError:
-            saldo_inicial = 0.0
+        try: saldo_inicial = float(self.view.txt_saldo_inicial.text().replace(',', '.'))
+        except ValueError: saldo_inicial = 0.0
         html = relatorios.gerar_html_fluxo_caixa_completo(df_relatorio, saldo_inicial)
         self.view.exibir_preview_impressao(html)
 
