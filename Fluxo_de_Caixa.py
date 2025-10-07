@@ -1,12 +1,13 @@
-# Fluxo_de_Caixa.py (com a lógica dos filtros rápidos)
+# Fluxo_de_Caixa.py (com Curva ABC)
 
 import sys
 import os
 import pandas as pd
-from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QFileDialog, QMessageBox, QComboBox
+from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QFileDialog, QMessageBox
 from PyQt5.QtCore import Qt, QDate
 
-from DadosFormulario_refatorado import DadosFormularioWidget
+# Importando o novo diálogo
+from DadosFormulario_refatorado import DadosFormularioWidget, BalancoDialog, CurvaABCDialog
 from data import excel_handler
 from core import financas, relatorios, utils
 
@@ -15,7 +16,7 @@ os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('GRF v1.7 (Filtros Rápidos)')
+        self.setWindowTitle('GRF v1.9 (Curva ABC)')
         self.resize(1600, 850)
         self.df_dados_completos = pd.DataFrame()
         self.df_dados_filtrados = pd.DataFrame()
@@ -25,34 +26,76 @@ class MainWindow(QMainWindow):
         self._conectar_sinais()
 
     def _criar_menus(self):
-        self.menuBar = self.menuBar()
-        self.fileMenu = self.menuBar.addMenu('Arquivo')
+        menu_bar = self.menuBar() 
+        self.fileMenu = menu_bar.addMenu('Arquivo')
+        
         carregar_action = QAction('Carregar Excel', self)
         carregar_action.setShortcut('Ctrl+O')
         carregar_action.triggered.connect(self.carregar_arquivos_excel)
         self.fileMenu.addAction(carregar_action)
+
         salvar_action = QAction('Salvar como Excel', self)
         salvar_action.setShortcut('Ctrl+S')
         salvar_action.triggered.connect(self.salvar_tabela_excel)
         self.fileMenu.addAction(salvar_action)
-        self.relatorioMenu = self.menuBar.addMenu('Relatório')
+
+        self.relatorioMenu = menu_bar.addMenu('Relatório')
         imprimir_fluxo_action = QAction('Visualizar Fluxo de Caixa', self)
         imprimir_fluxo_action.setShortcut('Ctrl+P')
         imprimir_fluxo_action.triggered.connect(self.visualizar_relatorio_fluxo_caixa)
         self.relatorioMenu.addAction(imprimir_fluxo_action)
+        
+        balanco_action = QAction('Balanço', self)
+        balanco_action.setShortcut('Ctrl+B')
+        balanco_action.triggered.connect(self._exibir_relatorio_balanco)
+        self.relatorioMenu.addAction(balanco_action)
+
+        # >>> NOVO: Adicionando as ações de Curva ABC <<<
+        self.relatorioMenu.addSeparator()
+        abc_entrada_action = QAction('Curva ABC - Entradas', self)
+        abc_entrada_action.triggered.connect(lambda: self._exibir_curva_abc('entrada'))
+        self.relatorioMenu.addAction(abc_entrada_action)
+
+        abc_saida_action = QAction('Curva ABC - Saídas', self)
+        abc_saida_action.triggered.connect(lambda: self._exibir_curva_abc('saida'))
+        self.relatorioMenu.addAction(abc_saida_action)
+
 
     def _conectar_sinais(self):
-        # Filtros principais
         self.view.botao_aplicar_filtro.clicked.connect(self.aplicar_filtros_e_atualizar_view)
         self.view.botao_saldo_inicial.clicked.connect(self.aplicar_filtros_e_atualizar_view)
-
-        # >>> NOVO: Conectando os botões de filtro rápido <<<
         self.view.botao_hoje.clicked.connect(self._filtrar_por_hoje)
         self.view.botao_atrasados.clicked.connect(self._filtrar_por_atrasados)
         self.view.botao_15_dias.clicked.connect(lambda: self._filtrar_proximos_dias(15))
         self.view.botao_30_dias.clicked.connect(lambda: self._filtrar_proximos_dias(30))
 
-    # --- NOVOS MÉTODOS PARA FILTROS RÁPIDOS ---
+    # --- NOVO MÉTODO PARA O RELATÓRIO DE CURVA ABC ---
+    def _exibir_curva_abc(self, tipo):
+        if self.df_dados_filtrados.empty:
+            QMessageBox.warning(self, "Aviso", "Não há dados filtrados para gerar a Curva ABC.")
+            return
+
+        # 1. Chamar a função de cálculo do nosso módulo de finanças
+        df_resultado_abc = financas.gerar_curva_abc(self.df_dados_filtrados, tipo)
+
+        if df_resultado_abc.empty:
+            QMessageBox.information(self, "Aviso", f"Não foram encontradas '{tipo}s' no período selecionado.")
+            return
+
+        # 2. Criar e exibir o diálogo
+        dialog = CurvaABCDialog(df_resultado_abc, tipo, self)
+        dialog.exec_()
+
+    # (O resto do arquivo continua o mesmo)
+    def _exibir_relatorio_balanco(self):
+        if self.df_dados_filtrados.empty:
+            QMessageBox.warning(self, "Aviso", "Não há dados filtrados para gerar o balanço.")
+            return
+        entradas, saidas, saldo, icp = financas.calcular_balanco(self.df_dados_filtrados)
+        dados_formatados = {"Total de Entradas": entradas, "Total de Saídas": saidas, "Saldo Final": saldo, "ICP": icp}
+        dialog = BalancoDialog(dados_formatados, self)
+        dialog.exec_()
+
     def _filtrar_por_hoje(self):
         hoje = QDate.currentDate()
         self.view.data_inicial.setDate(hoje)
@@ -61,7 +104,7 @@ class MainWindow(QMainWindow):
 
     def _filtrar_por_atrasados(self):
         hoje = QDate.currentDate()
-        data_inicio_atrasados = hoje.addYears(-10) # Pega um período bem grande no passado
+        data_inicio_atrasados = hoje.addYears(-10)
         data_fim_atrasados = hoje.addDays(-1)
         self.view.data_inicial.setDate(data_inicio_atrasados)
         self.view.data_final.setDate(data_fim_atrasados)
@@ -74,7 +117,6 @@ class MainWindow(QMainWindow):
         self.view.data_final.setDate(data_futura)
         self.aplicar_filtros_e_atualizar_view()
 
-    # --- MÉTODOS DE CONTROLE (sem grandes mudanças) ---
     def carregar_arquivos_excel(self):
         files, _ = QFileDialog.getOpenFileNames(self, "Selecione os arquivos Excel", "", "Excel Files (*.xlsx *.xls)")
         if files:

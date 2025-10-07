@@ -161,3 +161,120 @@ class DadosFormularioWidget(QWidget):
         preview_dialog = QPrintPreviewDialog(printer, self)
         preview_dialog.paintRequested.connect(documento.print_)
         preview_dialog.exec_()
+        
+
+
+
+
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+import tempfile
+import os
+from PyQt5.QtWidgets import QTableWidget, QHeaderView, QSizePolicy, QDialogButtonBox
+from PyQt5.QtGui import QPixmap
+        
+class BalancoDialog(QDialog):
+    """Um diálogo para exibir o relatório de balanço com uma tabela e um gráfico."""
+    def __init__(self, dados_balanco, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Relatório de Balanço")
+        self.resize(450, 550)
+
+        layout = QVBoxLayout(self)
+
+        # Tabela com os dados
+        tabela_balanco = QTableWidget()
+        tabela_balanco.setColumnCount(2)
+        tabela_balanco.setRowCount(4)
+        tabela_balanco.setHorizontalHeaderLabels(["Descrição", "Valor (R$)"])
+        
+        # Preenchendo a tabela
+        for row, (descricao, valor) in enumerate(dados_balanco.items()):
+            item_desc = QTableWidgetItem(descricao)
+            if descricao == "ICP":
+                item_valor = QTableWidgetItem(f"{valor:,.2f}")
+            else:
+                item_valor = QTableWidgetItem(f"R$ {valor:,.2f}")
+            
+            item_desc.setFlags(item_desc.flags() & ~Qt.ItemIsEditable)
+            item_valor.setFlags(item_valor.flags() & ~Qt.ItemIsEditable)
+            
+            tabela_balanco.setItem(row, 0, item_desc)
+            tabela_balanco.setItem(row, 1, item_valor)
+
+        tabela_balanco.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
+        tabela_balanco.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+        layout.addWidget(tabela_balanco)
+
+        # Gráfico de Barras
+        canvas = self._criar_grafico(dados_balanco)
+        layout.addWidget(canvas)
+
+        # Botão OK
+        botoes = QDialogButtonBox(QDialogButtonBox.Ok)
+        botoes.accepted.connect(self.accept)
+        layout.addWidget(botoes)
+
+    def _criar_grafico(self, dados):
+        fig, ax = plt.subplots(figsize=(5, 4))
+        tipos = ["Entradas", "Saídas"]
+        valores = [dados["Total de Entradas"], dados["Total de Saídas"]]
+        cores = ["green", "red"]
+
+        bars = ax.bar(tipos, valores, color=cores, width=0.5)
+
+        for bar in bars:
+            height = bar.get_height()
+            ax.text(bar.get_x() + bar.get_width() / 2, height, f"R$ {height:,.0f}",
+                    ha='center', va='bottom', fontsize=10)
+
+        ax.set_title("Balanço Financeiro", fontsize=12, pad=10)
+        ax.set_ylabel("Valor (R$)", fontsize=10)
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.grid(axis="y", linestyle="--", alpha=0.7)
+        fig.tight_layout()
+
+        return FigureCanvas(fig)
+    
+    
+    
+class CurvaABCDialog(QDialog):
+    """Um diálogo para exibir a tabela da Curva ABC."""
+    def __init__(self, df_abc, tipo, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(f"Curva ABC - {tipo.capitalize()}")
+        self.resize(700, 500)
+
+        layout = QVBoxLayout(self)
+
+        self.tabela_abc = QTableWidget()
+        self.tabela_abc.setColumnCount(4)
+        self.tabela_abc.setHorizontalHeaderLabels(['Nome', 'Valor', '% Acumulada', 'Categoria'])
+        self.tabela_abc.setColumnWidth(0, 350)
+        self.tabela_abc.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
+
+        self.preencher_tabela(df_abc)
+        layout.addWidget(self.tabela_abc)
+
+        botoes = QDialogButtonBox(QDialogButtonBox.Ok)
+        botoes.accepted.connect(self.accept)
+        layout.addWidget(botoes)
+
+    def preencher_tabela(self, df):
+        self.tabela_abc.setRowCount(len(df))
+        for row, row_data in df.iterrows():
+            nome_item = QTableWidgetItem(row_data['NOME'])
+            # Usamos a coluna 'Valor Formatado' que já criamos no core/financas.py
+            valor_item = QTableWidgetItem(row_data['Valor Formatado'])
+            acumulada_item = QTableWidgetItem(f"{row_data['% Acumulada']:.2f}%")
+            categoria_item = QTableWidgetItem(row_data['Categoria'])
+
+            # Tornar células não editáveis
+            for item in [nome_item, valor_item, acumulada_item, categoria_item]:
+                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
+
+            self.tabela_abc.setItem(row, 0, nome_item)
+            self.tabela_abc.setItem(row, 1, valor_item)
+            self.tabela_abc.setItem(row, 2, acumulada_item)
+            self.tabela_abc.setItem(row, 3, categoria_item)
