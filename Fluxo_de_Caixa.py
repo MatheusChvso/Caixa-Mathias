@@ -1,4 +1,4 @@
-# Fluxo_de_Caixa.py (versão corrigida final)
+# Fluxo_de_Caixa.py (com Fluxo Diário e Mensal)
 
 import sys
 import os
@@ -6,7 +6,8 @@ import pandas as pd
 from PyQt5.QtWidgets import QApplication, QMainWindow, QAction, QFileDialog, QMessageBox
 from PyQt5.QtCore import Qt, QDate
 
-from DadosFormulario_refatorado import DadosFormularioWidget, BalancoDialog, CurvaABCDialog, CadastroDialog
+from DadosFormulario_refatorado import (DadosFormularioWidget, BalancoDialog, CurvaABCDialog, 
+                                        CadastroDialog, FluxoGraficoDialog) # Importa o novo diálogo
 from data import excel_handler
 from core import financas, relatorios, utils
 
@@ -15,7 +16,8 @@ os.environ["QTWEBENGINE_DISABLE_SANDBOX"] = "1"
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
-        self.setWindowTitle('GRF v2.4 (Calendário Colorido)')
+        self.setWindowTitle('GRF v2.5 (Relatórios de Fluxo)')
+        # ... (resto do __init__)
         self.resize(1600, 850)
         self.df_dados_completos = pd.DataFrame()
         self.df_dados_filtrados = pd.DataFrame()
@@ -28,6 +30,7 @@ class MainWindow(QMainWindow):
     def _criar_menus(self):
         menu_bar = self.menuBar() 
         self.fileMenu = menu_bar.addMenu('Arquivo')
+        # ... (menu Arquivo)
         cadastrar_action = QAction('Cadastrar Novo Item', self); cadastrar_action.setShortcut('Ctrl+N'); cadastrar_action.triggered.connect(self._cadastrar_novo_item)
         self.fileMenu.addAction(cadastrar_action)
         self.fileMenu.addSeparator()
@@ -37,6 +40,7 @@ class MainWindow(QMainWindow):
         self.fileMenu.addAction(salvar_action)
 
         self.relatorioMenu = menu_bar.addMenu('Relatório')
+        # ... (outros relatórios)
         imprimir_fluxo_action = QAction('Visualizar Fluxo de Caixa', self); imprimir_fluxo_action.setShortcut('Ctrl+P'); imprimir_fluxo_action.triggered.connect(self.visualizar_relatorio_fluxo_caixa)
         self.relatorioMenu.addAction(imprimir_fluxo_action)
         balanco_action = QAction('Balanço', self); balanco_action.setShortcut('Ctrl+B'); balanco_action.triggered.connect(self._exibir_relatorio_balanco)
@@ -46,8 +50,18 @@ class MainWindow(QMainWindow):
         self.relatorioMenu.addAction(abc_entrada_action)
         abc_saida_action = QAction('Curva ABC - Saídas', self); abc_saida_action.triggered.connect(lambda: self._exibir_curva_abc('saida'))
         self.relatorioMenu.addAction(abc_saida_action)
+        
+        # >>> NOVO: Adicionando as ações de Fluxo <<<
+        self.relatorioMenu.addSeparator()
+        fluxo_diario_action = QAction('Fluxo Diário', self)
+        fluxo_diario_action.triggered.connect(self._exibir_fluxo_diario)
+        self.relatorioMenu.addAction(fluxo_diario_action)
+        
+        fluxo_mensal_action = QAction('Fluxo Mensal', self)
+        fluxo_mensal_action.triggered.connect(self._exibir_fluxo_mensal)
+        self.relatorioMenu.addAction(fluxo_mensal_action)
 
-
+    # ... (sinais)
     def _conectar_sinais(self):
         self.view.botao_aplicar_filtro.clicked.connect(self.aplicar_filtros_e_atualizar_view)
         self.view.botao_saldo_inicial.clicked.connect(self.aplicar_filtros_e_atualizar_view)
@@ -59,6 +73,50 @@ class MainWindow(QMainWindow):
         self.view.botao_salvar_obs.clicked.connect(self._salvar_observacao)
         self.view.calendario.selectionChanged.connect(self._filtrar_pelo_calendario)
 
+    # --- NOVOS MÉTODOS PARA RELATÓRIOS DE FLUXO ---
+    def _exibir_fluxo_diario(self):
+        if self.df_dados_filtrados.empty:
+            QMessageBox.warning(self, "Aviso", "Não há dados para gerar o relatório de fluxo diário.")
+            return
+
+        df = self.df_dados_filtrados.copy()
+        
+        # Separa os valores em entradas e saídas
+        df['Entradas'] = df['VALOR'].apply(lambda x: x if x >= 0 else 0)
+        df['Saídas'] = df['VALOR'].apply(lambda x: x if x < 0 else 0)
+        
+        # Agrupa os dados por dia
+        df_agrupado = df.groupby(df['VENCIMENTO'].dt.date)[['Entradas', 'Saídas']].sum()
+        
+        # Cria um rótulo formatado para o eixo do gráfico
+        df_agrupado['Label'] = [d.strftime('%d/%m/%Y') for d in df_agrupado.index]
+
+        # Chama o diálogo
+        dialog = FluxoGraficoDialog(df_agrupado, "Fluxo Diário de Entradas e Saídas", self)
+        dialog.exec_()
+        
+    def _exibir_fluxo_mensal(self):
+        if self.df_dados_filtrados.empty:
+            QMessageBox.warning(self, "Aviso", "Não há dados para gerar o relatório de fluxo mensal.")
+            return
+
+        df = self.df_dados_filtrados.copy()
+        
+        df['Entradas'] = df['VALOR'].apply(lambda x: x if x >= 0 else 0)
+        df['Saídas'] = df['VALOR'].apply(lambda x: x if x < 0 else 0)
+
+        # Agrupa os dados por mês (usando o primeiro dia do mês como referência)
+        df_agrupado = df.groupby(df['VENCIMENTO'].dt.to_period('M'))[['Entradas', 'Saídas']].sum()
+
+        # Cria um rótulo formatado para o eixo do gráfico (ex: Jan/2023)
+        df_agrupado['Label'] = [p.strftime('%b/%Y') for p in df_agrupado.index]
+        
+        # Chama o diálogo
+        dialog = FluxoGraficoDialog(df_agrupado, "Fluxo Mensal de Entradas e Saídas", self)
+        dialog.exec_()
+
+    # (O resto do arquivo continua o mesmo)
+    # ...
     def _filtrar_pelo_calendario(self):
         data_clicada = self.view.calendario.selectedDate()
         if self.data_selecao_inicio is None:
@@ -150,15 +208,16 @@ class MainWindow(QMainWindow):
             excel_handler.salvar_dados_para_excel(self.df_dados_completos, file_path)
 
     def aplicar_filtros_e_atualizar_view(self, primeira_carga=False):
-        data_inicio = self.view.data_inicial.date()
-        data_fim = self.view.data_final.date()
-        self.view.destacar_periodo_calendario(data_inicio, data_fim)
         if self.df_dados_completos.empty: return
         df = self.df_dados_completos.copy()
         if primeira_carga and not df.empty:
             self.data_selecao_inicio = None
             data_min = df['VENCIMENTO'].min(); data_max = df['VENCIMENTO'].max()
             self.view.data_inicial.setDate(data_min); self.view.data_final.setDate(data_max)
+        
+        # A chamada para destacar o período é feita aqui, depois que as datas estão definidas
+        self.view.destacar_periodo_calendario(self.view.data_inicial.date(), self.view.data_final.date())
+        
         filtros = self.view.get_valores_filtros()
         if filtros['nome'] != "Todos": df = df[df['NOME'] == filtros['nome']]
         if filtros['filial'] != "Todos": df = df[df['FILIAL'] == filtros['filial']]
